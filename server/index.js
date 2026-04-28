@@ -56,6 +56,17 @@ io.on('connection', (socket) => {
       ack && ack({ ok: false, error: 'room-full' });
       return;
     }
+    // If the same socket is switching rooms, evict it from the old one first.
+    // Otherwise the old room's Set keeps a phantom member and falsely fills up.
+    if (joinedRoom && joinedRoom !== roomId) {
+      const oldRoom = rooms.get(joinedRoom);
+      if (oldRoom) {
+        oldRoom.delete(socket.id);
+        socket.to(joinedRoom).emit('partner-left', { partnerId: socket.id });
+        if (oldRoom.size === 0) rooms.delete(joinedRoom);
+      }
+      socket.leave(joinedRoom);
+    }
     room.add(socket.id);
     joinedRoom = roomId;
     socket.join(roomId);

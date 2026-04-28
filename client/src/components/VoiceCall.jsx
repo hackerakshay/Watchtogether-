@@ -8,6 +8,8 @@ export default function VoiceCall({ socket, partnerId, iAmInitiator }) {
 
   const peerRef = useRef(null);
   const localStreamRef = useRef(null);
+  const localStreamReadyRef = useRef(false);
+  const pendingSignalsRef = useRef([]);
   const remoteAudioRef = useRef(null);
 
   useEffect(() => {
@@ -34,11 +36,25 @@ export default function VoiceCall({ socket, partnerId, iAmInitiator }) {
           t.enabled = !muted;
         });
 
+        localStreamReadyRef.current = true;
+
         if (iAmInitiator) {
           // Initiator immediately creates the offering peer.
           createPeer({ initiator: true });
+        } else if (pendingSignalsRef.current.length > 0) {
+          // Non-initiator: an offer may have already arrived while we were
+          // awaiting mic permission. Now that the stream is ready, create
+          // the peer WITH the stream and replay buffered signals.
+          if (!peerRef.current) createPeer({ initiator: false });
+          const queued = pendingSignalsRef.current.splice(0);
+          for (const s of queued) {
+            try {
+              peerRef.current.signal(s);
+            } catch (e) {
+              console.error('voice-signal replay error', e);
+            }
+          }
         }
-        // The non-initiator waits for an incoming signal — created in onSignal.
       } catch (e) {
         setError(e.message || 'Microphone access denied');
       }
@@ -54,6 +70,8 @@ export default function VoiceCall({ socket, partnerId, iAmInitiator }) {
         localStreamRef.current.getTracks().forEach((t) => t.stop());
         localStreamRef.current = null;
       }
+      localStreamReadyRef.current = false;
+      pendingSignalsRef.current = [];
       setConnected(false);
     };
     // We intentionally re-run when partnerId changes so we re-establish the call
@@ -63,6 +81,16 @@ export default function VoiceCall({ socket, partnerId, iAmInitiator }) {
   useEffect(() => {
     function onSignal({ from, signal }) {
       if (!partnerId || from !== partnerId) return;
+
+      // If mic isn't ready yet (non-initiator awaiting permission),
+      // buffer the offer and let start() replay it once the stream lands.
+      // Otherwise the peer would be created with no local audio track,
+      // resulting in permanent one-way audio.
+      if (!localStreamReadyRef.current) {
+        pendingSignalsRef.current.push(signal);
+        return;
+      }
+
       if (!peerRef.current) {
         // We are the answering side
         createPeer({ initiator: false });
