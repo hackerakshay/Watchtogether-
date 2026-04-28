@@ -91,21 +91,21 @@ export default function Room() {
       });
     }
 
-    let pendingConnect = null;
     if (!joinedRef.current) {
       joinedRef.current = true;
       if (socket.connected) joinNow();
-      else {
-        pendingConnect = joinNow;
-        socket.once('connect', joinNow);
-      }
+      // If not yet connected, attach a once-listener that fires on connect.
+      // We deliberately do NOT remove it on cleanup: StrictMode's double-mount
+      // would otherwise drop the listener (mount#1 registers, cleanup removes,
+      // mount#2 sees joinedRef=true and skips re-registration), and no
+      // join-room would ever be emitted. socket.once auto-removes after firing.
+      else socket.once('connect', joinNow);
     }
 
     return () => {
       socket.off('partner-joined', onPartnerJoined);
       socket.off('partner-present', onPartnerPresent);
       socket.off('partner-left', onPartnerLeft);
-      if (pendingConnect) socket.off('connect', pendingConnect);
 
       // Schedule a leave-room. If the component remounts within ~80ms
       // (StrictMode), the next mount cancels this and the leave never fires.
