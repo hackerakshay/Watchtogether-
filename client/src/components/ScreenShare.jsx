@@ -36,6 +36,31 @@ export default function ScreenShare({ socket, partnerId, iAmInitiator }) {
     }
   }, [remoteStream]);
 
+  // Unmount cleanup: stop local tracks, destroy peer, notify partner.
+  // Otherwise switching to URL Mode while sharing leaks the MediaStream
+  // (browser keeps the recording indicator on with no UI to stop it).
+  useEffect(() => {
+    return () => {
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach((t) => t.stop());
+        localStreamRef.current = null;
+      }
+      if (peerRef.current) {
+        try {
+          peerRef.current.destroy();
+        } catch {
+          // ignore
+        }
+        peerRef.current = null;
+      }
+      try {
+        socket.emit('screen-share-stopped');
+      } catch {
+        // ignore
+      }
+    };
+  }, [socket]);
+
   // Tear down when partner leaves
   useEffect(() => {
     if (!partnerId) {
