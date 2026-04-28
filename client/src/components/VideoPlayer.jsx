@@ -94,7 +94,6 @@ export default function VideoPlayer({ socket, partnerId }) {
             onPause={() => emit('pause')}
             onSeeked={() => emit('seek')}
             onError={() => setError('Could not load video. Try a direct .mp4 link or check CORS.')}
-            crossOrigin="anonymous"
           />
         ) : (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6">
