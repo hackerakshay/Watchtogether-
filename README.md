@@ -12,9 +12,13 @@ A real-time **screen share + voice call** web app for exactly two people. Built 
 ## Features
 
 - **Create a room** → get a shareable link
-- **Share Screen** (`getDisplayMedia`) — partner sees your screen as a live video stream
+- **Two watch modes** — toggle at the top of the room:
+  - **Screen Share** (`getDisplayMedia`) — partner sees your screen as a live video stream. Use this for MoviBox / Netflix / anything in a browser tab.
+  - **URL Mode** — paste a direct video URL (`.mp4`, `.m3u8`, `.webm`). Both players load it; play / pause / seek stay synced via Socket.io.
 - **Voice call** (`getUserMedia` audio) running simultaneously, with mute/unmute
-- **Text chat** sidebar
+- **Text chat** sidebar with timestamps and emoji quick-send (❤️ 😂 😮)
+- **Floating emoji reactions** — quick-send buttons that float up over the sidebar for both users
+- **Toast notifications** when your partner joins, leaves, or reconnects
 - **Mobile responsive** — chat collapses to a toggle button on small screens
 - Dark indigo theme
 
@@ -117,6 +121,8 @@ No URL extraction. No CORS issues. Works for any site.
 | `screen-signal` | both | `{ to, signal }` (relayed) |
 | `voice-signal` | both | `{ to, signal }` (relayed) |
 | `screen-share-stopped` | both | `{}` |
+| `sync-event` | both | `{ type: 'play'\|'pause'\|'seek'\|'url-changed', currentTime?, url? }` (URL Mode) |
+| `reaction` | both | `{ emoji }` outbound; `{ id, from, emoji, ts }` inbound |
 | `chat-message` | both | `{ text }` outbound; `{ id, from, text, ts }` inbound |
 
 Rooms are an in-memory `Map<roomId, Set<socketId>>` capped at 2 users.

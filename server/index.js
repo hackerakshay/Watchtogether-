@@ -96,6 +96,33 @@ io.on('connection', (socket) => {
     socket.to(joinedRoom).emit('screen-share-stopped', { from: socket.id });
   });
 
+  // URL Mode video sync — relay play/pause/seek/url-changed to the OTHER socket only
+  socket.on('sync-event', (payload) => {
+    if (!joinedRoom || !payload || typeof payload !== 'object') return;
+    const { type, currentTime, url } = payload;
+    if (!['play', 'pause', 'seek', 'url-changed'].includes(type)) return;
+    socket.to(joinedRoom).emit('sync-event', {
+      from: socket.id,
+      type,
+      currentTime: typeof currentTime === 'number' ? currentTime : undefined,
+      url: typeof url === 'string' ? url : undefined,
+      ts: Date.now(),
+    });
+  });
+
+  // Emoji reactions — broadcast to the room (sender included so they see their own)
+  socket.on('reaction', ({ emoji }) => {
+    if (!joinedRoom || typeof emoji !== 'string') return;
+    const trimmed = emoji.slice(0, 16);
+    if (!trimmed) return;
+    io.to(joinedRoom).emit('reaction', {
+      id: nanoid(6),
+      from: socket.id,
+      emoji: trimmed,
+      ts: Date.now(),
+    });
+  });
+
   socket.on('disconnect', () => {
     if (!joinedRoom) return;
     const room = rooms.get(joinedRoom);
