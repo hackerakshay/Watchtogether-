@@ -136,13 +136,30 @@ io.on('connection', (socket) => {
     });
   });
 
-  socket.on('disconnect', () => {
+  function leaveCurrentRoom() {
     if (!joinedRoom) return;
     const room = rooms.get(joinedRoom);
-    if (!room) return;
+    if (!room) {
+      joinedRoom = null;
+      return;
+    }
     room.delete(socket.id);
     socket.to(joinedRoom).emit('partner-left', { partnerId: socket.id });
     if (room.size === 0) rooms.delete(joinedRoom);
+    socket.leave(joinedRoom);
+    joinedRoom = null;
+  }
+
+  // Client emits leave-room when navigating away from a Room without
+  // disconnecting (e.g., back to Home). Prevents phantom room members
+  // since the socket is a module-level singleton on the client and
+  // does NOT disconnect on route change.
+  socket.on('leave-room', () => {
+    leaveCurrentRoom();
+  });
+
+  socket.on('disconnect', () => {
+    leaveCurrentRoom();
   });
 });
 

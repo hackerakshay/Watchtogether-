@@ -8,6 +8,11 @@ import Chat from '../components/Chat.jsx';
 import Reactions from '../components/Reactions.jsx';
 import Toast from '../components/Toast.jsx';
 
+// Module-level so StrictMode's cleanup-then-remount in dev doesn't
+// trigger an unnecessary leave/rejoin cycle. The next mount cancels
+// the pending leave timer.
+let pendingLeaveTimer = null;
+
 export default function Room() {
   const { roomId } = useParams();
   const socket = useMemo(() => getSocket(), []);
@@ -30,30 +35,11 @@ export default function Room() {
   }, []);
 
   useEffect(() => {
-    if (joinedRef.current) return;
-    joinedRef.current = true;
-
-    function joinNow() {
-      socket.emit('join-room', { roomId }, (resp) => {
-        if (!resp?.ok) {
-          pushToast({
-            text: resp?.error === 'room-full' ? 'This room is full.' : 'Failed to join room',
-            variant: 'error',
-            duration: 4000,
-          });
-          return;
-        }
-        if (resp.partnerConnected && resp.partnerId) {
-          setPartnerId(resp.partnerId);
-          setIAmInitiator(false);
-          everConnectedRef.current = true;
-        }
-      });
-    }
-
-    if (socket.connected) joinNow();
-    else socket.once('connect', joinNow);
-
+    // Listeners must (re)attach on every mount. Previously this whole effect
+    // bailed out early on the second StrictMode mount, leaving the socket
+    // singleton with NO partner-* listeners — so the live `partner-joined`
+    // event from a second tab joining was silently dropped on the existing
+    // tab. Only the `join-room` emit needs the once-guard.
     function onPartnerJoined({ partnerId: pid }) {
       setPartnerId(pid);
       setIAmInitiator(true);
@@ -80,10 +66,61 @@ export default function Room() {
     socket.on('partner-present', onPartnerPresent);
     socket.on('partner-left', onPartnerLeft);
 
+    // Cancel any pending leave-room from a previous unmount. This
+    // typically fires during StrictMode's cleanup→remount cycle in dev.
+    if (pendingLeaveTimer) {
+      clearTimeout(pendingLeaveTimer);
+      pendingLeaveTimer = null;
+    }
+
+    function joinNow() {
+      socket.emit('join-room', { roomId }, (resp) => {
+        if (!resp?.ok) {
+          pushToast({
+            text: resp?.error === 'room-full' ? 'This room is full.' : 'Failed to join room',
+            variant: 'error',
+            duration: 4000,
+          });
+          return;
+        }
+        if (resp.partnerConnected && resp.partnerId) {
+          setPartnerId(resp.partnerId);
+          setIAmInitiator(false);
+          everConnectedRef.current = true;
+        }
+      });
+    }
+
+    let pendingConnect = null;
+    if (!joinedRef.current) {
+      joinedRef.current = true;
+      if (socket.connected) joinNow();
+      else {
+        pendingConnect = joinNow;
+        socket.once('connect', joinNow);
+      }
+    }
+
     return () => {
       socket.off('partner-joined', onPartnerJoined);
       socket.off('partner-present', onPartnerPresent);
       socket.off('partner-left', onPartnerLeft);
+      if (pendingConnect) socket.off('connect', pendingConnect);
+
+      // Schedule a leave-room. If the component remounts within ~80ms
+      // (StrictMode), the next mount cancels this and the leave never fires.
+      // Real navigation away (router unmount, tab close) lets it fire so the
+      // server doesn't keep us as a phantom member of a 2-person room.
+      if (pendingLeaveTimer) clearTimeout(pendingLeaveTimer);
+      pendingLeaveTimer = setTimeout(() => {
+        pendingLeaveTimer = null;
+        joinedRef.current = false;
+        try {
+          socket.emit('leave-room');
+        } catch {
+          // ignore
+        }
+      }, 80);
     };
   }, [pushToast, roomId, socket]);
 
