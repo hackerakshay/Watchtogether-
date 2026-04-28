@@ -111,8 +111,10 @@ io.on('connection', (socket) => {
   });
 
   // Emoji reactions — broadcast to the room (sender included so they see their own)
-  socket.on('reaction', ({ emoji }) => {
-    if (!joinedRoom || typeof emoji !== 'string') return;
+  socket.on('reaction', (payload) => {
+    if (!joinedRoom || !payload || typeof payload !== 'object') return;
+    const { emoji } = payload;
+    if (typeof emoji !== 'string') return;
     const trimmed = emoji.slice(0, 16);
     if (!trimmed) return;
     io.to(joinedRoom).emit('reaction', {

@@ -18,6 +18,7 @@ export default function VideoPlayer({ socket, partnerId }) {
       const v = videoRef.current;
 
       if (type === 'url-changed' && incomingUrl) {
+        setError('');
         setUrl(incomingUrl);
         setPendingUrl(incomingUrl);
         return;
